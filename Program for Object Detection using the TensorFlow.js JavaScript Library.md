@@ -214,7 +214,7 @@ for (let i = 0; i < children.length; i++) {
 for (let n = 0; n < predictions.length; n++)
 ```
 
-For every section present in the current camera stream frame that is added to the set of instances that can be given a *prediction of its **class***, the if condition below will first determine if the **confidence score** for the class to be assigned is higher than 0.66 or 66% (pwede naman nating taasan itong minimum confidence score kung gusto niyo). As shown in the nested if block, if the class of the recognized object is equal to **'bottle'**, a message will be printed on the console to signal that an object with the class of bottle was detected.
+For every section present in the current camera stream frame that is added to the set of instances that can be given a *prediction of its **class***, the if condition below will first determine if the **confidence score** for the class to be assigned is higher than 0.66 or 66%. As shown in the nested if block, if the class of the recognized object is equal to **'bottle'**, a message will be printed on the console to signal that an object with the class of bottle was detected.
 
 
 ```python
