@@ -15,11 +15,6 @@ int resultCount = 0;
 int reference;
 
 Servo s1;
-Servo s2;
-
-bool valveManual = false;
-bool valveAuto = true;
-bool holderActivated = false;
 
 int interval_reconnect = 15000;
 int updateInterval = 5000;  // interval between updates
@@ -27,9 +22,7 @@ unsigned long lastUpdate = 0;
 
 using namespace websockets2_generic;
 
-WiFiManager SIBATNode;
-
-
+WiFiManager RVM_WiFiModule;
 WebsocketsClient client;
 /*
 class Valve
@@ -190,13 +183,8 @@ void setup() {
   while (!Serial && millis() < 5000)
     ;
 
-  // Connect to wifi
-  //WiFi.begin(ssid, password);
-  //WiFiManagerParameter parameter("parameterId", "Web App Host IP", "default value", 40);
-  //SIBATNode.addParameter(parameter);
 
-  SIBATNode.autoConnect("SIBAT Node 1");
-  //SIBATNode.startConfigPortal("SIBAT Node 1");
+  RVM_WiFiModule.autoConnect("Reverse Vendo Wi-Fi Module");
   /*
   // Check if connected to wifi
   if (WiFi.status() != WL_CONNECTED) 
@@ -219,13 +207,6 @@ void setup() {
   connected = client.connect(websockets_server_host, websockets_server_port, "/ws");
   //reconnectToServer();
   reference = resultCount + 1;
-  /* 
-  else 
-  {
-    //Serial.println("Not Connected!");
-  }
-  */
-  //}
 }
 void loop() {
 
@@ -233,7 +214,5 @@ void loop() {
     if (client.available()) {
       client.poll();
    }
-   reconnectToServer();
- 
-  //}  
+   reconnectToServer();  
 }
