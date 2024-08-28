@@ -7,9 +7,9 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 SoftwareSerial ArduinoUno(3,2);
 Servo feeder;
 
-int valid_inserted = 8;
+int valid_inserted = 0;
 int max_bottles = 10;
-int ballpen_count = 5;
+int ballpen_count = 10;
 bool reward;
 
 //bool val;
@@ -83,7 +83,7 @@ void dispenseReward() {
 
   delay(5000);
 
-  valid_inserted = 8;
+  valid_inserted = 0;
   lcd.clear();
   resetBottleCount();
   reward = false;
