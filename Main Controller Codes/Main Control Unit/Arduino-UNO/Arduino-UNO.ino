@@ -7,10 +7,8 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 SoftwareSerial ArduinoUno(3,2);
 Servo feeder;
 
-int valid_inserted = 8;
+int valid_inserted = 0;
 int max_bottles = 10;
-int ballpen_count = 5;
-bool reward;
 
 //bool val;
 
@@ -27,23 +25,9 @@ int feederActuator() {
     Serial.print(servo_position);
     Serial.println(" degrees.");
     feeder.write(servo_position);
-    delay(3000 + (3000 * multiplier[i]));
+    delay(3000 + (5000 * multiplier[i]));
   }
   return servo_position;
-}
-
-void resetBottleCount() {
-
-  lcd.setCursor(14,0);
-  lcd.print("0");
-  lcd.setCursor(15,0);
-  lcd.print(valid_inserted);
-  lcd.setCursor(10,1);
-  lcd.print("out of 10");
-  lcd.setCursor(9,2);
-  lcd.print("BOTTLES for");
-  lcd.setCursor(10,3);
-  lcd.print("a  reward");
 }
 
 void updateBottleCount() {
@@ -57,60 +41,13 @@ void updateBottleCount() {
       Serial.println(valid_inserted);
 
       lcd.setCursor(15,0);
-    }
+   }
     if (valid_inserted == max_bottles) {
       lcd.setCursor(14,0);
-      reward = true;
    }
-    // Write number of bottles to LCD Display
-    lcd.print(valid_inserted);   
+   // Write number of bottles to LCD Display
+   lcd.print(valid_inserted);
   }
-}
-
-void dispenseReward() {
-
-  Serial.println("\nAnother set of 10 bottles were inserted!");
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("DISPENSING 1 BALLPEN");
-  lcd.setCursor(0,2);
-  lcd.print("Collect your reward!");
-  ballpen_count--;
-
-  if (ballpen_count == 0) {
-    resetBallpenCount();
-  }
-
-  delay(5000);
-
-  valid_inserted = 8;
-  lcd.clear();
-  resetBottleCount();
-  reward = false;
-}
-
-void resetBallpenCount() {
-
-  Serial.println("An alert for empty ballpen bin will now be sent via SMS");
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("THE BALLPEN BIN");
-  lcd.setCursor(0,1);
-  lcd.print("IS EMPTY!");
-  lcd.setCursor(0,2);
-  lcd.print("Please refill it.");
-}
-
-void invalidWarning() {
-
-  lcd.clear();
-  lcd.setCursor(0,1);
-  lcd.print("The inserted item");
-  lcd.setCursor(0,2);
-  lcd.print("is not counted");
-  delay(3000);
-  lcd.clear();
-  resetBottleCount();
 }
 
 void setup(){
@@ -123,7 +60,16 @@ void setup(){
 
   lcd.init();					
   lcd.backlight();
-  resetBottleCount();
+  lcd.setCursor(14,0);
+  lcd.print("0");
+  lcd.setCursor(15,0);
+  lcd.print(valid_inserted);
+  lcd.setCursor(10,1);
+  lcd.print("out of 10");
+  lcd.setCursor(9,2);
+  lcd.print("BOTTLES for");
+  lcd.setCursor(10,3);
+  lcd.print("a  reward");
 }
 
 void loop(){
@@ -140,17 +86,13 @@ void loop(){
     if (val == 0) {
       Serial.println("Invalid");
       feederActuator();
-      invalidWarning();
     }
     if (val == 1) {
       // feeder.write(180);
       Serial.println("Valid");
       updateBottleCount();      
     }
-	 }
-   if (reward) {
-    dispenseReward();
-   }
- }  
+	}
+ }
 //delay(30);
 }
