@@ -1,7 +1,9 @@
 #include <esp_camera.h>
 #include <esp_int_wdt.h>
 #include <esp_task_wdt.h>
-#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
+//#include <WiFi.h>
 #include <DNSServer.h>
 #include <WiFiUdp.h>
 //#include <ArduinoOTA.h>
@@ -15,40 +17,40 @@
  *  sketch from Expressif:
  *  https://github.com/espressif/arduino-esp32/tree/master/libraries/ESP32/examples/Camera/CamwriteeraWebServer
  *
- *  It is modified to allow control of Illumination LED Lamps's (present on some modules),
- *  greater feedback via a status LED, and the HTML contents are present in plain text
- *  for easy modification.
- *
- *  A camera name can now be configured, and wifi details can be stored in an optional
- *  header file to allow easier updated of the repo.
- *
  *  The web UI has had changes to add the lamp control, rotation, a standalone viewer,
- *  more feeedback, new controls and other tweaks and changes,
- * note: Make sure that you have either selected ESP32 AI Thinker,
- *       or another board which has PSRAM enabled to use high resolution camera modes
+ *  more feeedback, new controls and other tweaks.
+ *  
+ *
+ *  note: Make sure that you select ESP32 AI Thinker,  
+ *  or another board which has PSRAM enabled to use high resolution camera modes.
+ *  
+ *
+ *  
+ *  
+ * 
  */
 
 
 /*
  *  FOR NETWORK AND HARDWARE SETTINGS COPY OR RENAME 'myconfig.sample.h' TO 'myconfig.h' AND EDIT THAT.
  *
- * By default this sketch will assume an AI-THINKER ESP-CAM and create
- * an accesspoint called "ESP32-CAM-CONNECT" (password: "InsecurePassword")
+ *  By default this sketch will assume an AI-THINKER ESP-CAM and create
+ *  an accesspoint called "ESP32-CAM-CONNECT" (password: "InsecurePassword")
  *
  */
 
- // Search for parameter in HTTP POST request
+// Search for WiFi configuration parameter in HTTP POST request
 const char* PARAM_INPUT_1 = "ssid";
 const char* PARAM_INPUT_2 = "pass";
 const char* PARAM_INPUT_3 = "ip";
 const char* PARAM_INPUT_4 = "gateway";
 
-//Variables to save values from HTML form
+// Variables to save values from HTML form
 String ssid;
 String pass;
 String ip;
 //char ip[32];
-String gateway;
+String gw;
 
 // File paths to save input values permanently
 const char* ssidPath = "/ssid.txt";
@@ -58,6 +60,37 @@ const char* gatewayPath = "/gateway.txt";
 
 AsyncWebServer server(100);
 AsyncWebSocket ws("/ws");
+
+bool wifi_discovered = false;
+
+// Set your Board ID (ESP32 Sender #1 = BOARD_ID 1, ESP32 Sender #2 = BOARD_ID 2, etc)
+#define BOARD_ID 1
+
+
+//MAC Address of the receiver 
+uint8_t broadcastAddress[] = {0x08, 0x3A, 0x8D, 0xCC, 0xD3, 0xE8};
+
+//Structure example to send data
+//Must match the receiver structure
+typedef struct struct_message {
+    char IP[24];
+    //int b;
+    bool APshared;
+    bool IPtransmission;
+    char connected_to[64];
+    char validation[16];
+
+} struct_message;
+
+esp_now_peer_info_t peerInfo;
+
+//Create a struct_message called myData
+struct_message myData;
+
+String esp32_ip;
+
+unsigned long previousMillis = 0;   // Stores last time temperature was published
+const long interval = 30000;        // Interval at which to publish sensor readings
 
 // Primary config, or defaults.
 #if __has_include("myconfig.h")
@@ -95,8 +128,9 @@ bool accesspoint = false;
 
 // IP address, Netmask and Gateway, populated when connected
 IPAddress ip_addr;
-//IPAddress net;
-//IPAddress gw;
+IPAddress local_IP(192, 168, 4, 100);
+IPAddress gateway;
+IPAddress subnet(255, 255, 0, 0);
 
 // Declare external function from app_httpd.cpp
 extern void startCameraServer(int hPort, int sPort);
@@ -224,17 +258,18 @@ const int pwmMax = pow(2,pwmresolution)-1;
 #endif
 
 //#if defined(NO_OTA)
-bool otaEnabled = false;
+// bool otaEnabled = false;
 //#else
 //    bool otaEnabled = true;
 //#endif
-
+/*
 #if defined(OTA_PASSWORD)
     char otaPassword[] = OTA_PASSWORD;
 #else
     char otaPassword[] = "";
 #endif
-
+*/
+/*
 #if defined(NTPSERVER)
     bool haveTime = true;
     const char* ntpServer = NTPSERVER;
@@ -246,7 +281,7 @@ bool otaEnabled = false;
     const long  gmtOffset_sec = 0;
     const int   daylightOffset_sec = 0;
 #endif
-
+*/
 // Critical error string; if set during init (camera hardware failure) it
 // will be returned for all http requests
 String critERR = "";
@@ -307,9 +342,6 @@ void setLamp(int newVal) {
 void calcURLs() {
     // Set the URL's
 
-    //char streamURL[24];
-    //ip.toCharArray(streamURL,16);
-
     ip_addr = WiFi.localIP();
     
     #if defined(URL_HOSTNAME)
@@ -324,7 +356,7 @@ void calcURLs() {
         if (httpPort != 80) {
             sprintf(httpURL, "http://%d.%d.%d.%d:%d/", ip, ip[1], ip[2], ip[3], httpPort);
         } else {
-            sprintf(httpURL, "http://%d.%d.%d.%d/", ip[0], ip[1], ip[2], ip[3]);
+            sprintf(httpURL, "http://%d.%d.%d.%d/", ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
         }
         sprintf(streamURL, "http://%d.%d.%d.%d:%d/", ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3], streamPort);
         Serial.println(ip_addr);
@@ -402,17 +434,17 @@ void StartCamera() {
 
         // OV3660 initial sensors are flipped vertically and colors are a bit saturated
         if (sensorPID == OV3660_PID) {
-            s->set_vflip(s, 1);  //flip it back
-            s->set_brightness(s, 1);  //up the blightness just a bit
-            s->set_saturation(s, -2);  //lower the saturation
+            s->set_vflip(s, 1);  // flip it back
+            s->set_brightness(s, 1);  // up the brightness just a bit
+            s->set_saturation(s, -2);  // lower the saturation
         }
-
+        /*
         // M5 Stack Wide has special needs
         #if defined(CAMERA_MODEL_M5STACK_WIDE)
             s->set_vflip(s, 1);
             s->set_hmirror(s, 1);
         #endif
-
+        */
         // Config can override mirror and flip
         #if defined(H_MIRROR)
             s->set_hmirror(s, H_MIRROR);
@@ -440,18 +472,7 @@ void StartCamera() {
         //s->set_contrast(s, 0);        // -2 to 2
         //s->set_saturation(s, 0);      // -2 to 2
         //s->set_special_effect(s, 0);  // 0 to 6 (0 - No Effect, 1 - Negative, 2 - Grayscale, 3 - Red Tint, 4 - Green Tint, 5 - Blue Tint, 6 - Sepia)
-        //s->set_whitebal(s, 1);        // aka 'awb' in the UI; 0 = disable , 1 = enable
-        //s->set_awb_gain(s, 1);        // 0 = disable , 1 = enable
-        //s->set_wb_mode(s, 0);         // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny, 2 - Cloudy, 3 - Office, 4 - Home)
         //s->set_exposure_ctrl(s, 1);   // 0 = disable , 1 = enable
-        //s->set_aec2(s, 0);            // 0 = disable , 1 = enable
-        //s->set_ae_level(s, 0);        // -2 to 2
-        //s->set_aec_value(s, 300);     // 0 to 1200
-        //s->set_gain_ctrl(s, 1);       // 0 = disable , 1 = enable
-        //s->set_agc_gain(s, 0);        // 0 to 30
-        //s->set_gainceiling(s, (gainceiling_t)0);  // 0 to 6
-        //s->set_bpc(s, 0);             // 0 = disable , 1 = enable
-        //s->set_wpc(s, 1);             // 0 = disable , 1 = enable
         //s->set_raw_gma(s, 1);         // 0 = disable , 1 = enable
         //s->set_lenc(s, 1);            // 0 = disable , 1 = enable
         //s->set_hmirror(s, 0);         // 0 = disable , 1 = enable
@@ -460,313 +481,6 @@ void StartCamera() {
         //s->set_colorbar(s, 0);        // 0 = disable , 1 = enable
     }
     // We now have camera with default init
-}
-
-void WifiSetup() {
-    // Feedback that we are now attempting to connect
-    flashLED(300);
-    delay(100);
-    flashLED(300);
-    Serial.println("Starting WiFi");
-
-    // Disable power saving on WiFi to improve responsiveness
-    // (https://github.com/espressif/arduino-esp32/issues/1484)
-    WiFi.setSleep(false);
-    /*
-    Serial.print("Known external SSIDs: ");
-    if (stationCount > firstStation) {
-        for (int i=firstStation; i < stationCount; i++) Serial.printf(" '%s'", stationList[i].ssid);
-    } else {
-        Serial.print("None");
-    }
-    Serial.println();
-    byte mac[6] = {0,0,0,0,0,0};
-    WiFi.macAddress(mac);
-    Serial.printf("MAC address: %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-    int bestStation = -1;
-    long bestRSSI = -1024;
-    char bestSSID[65] = "";
-    uint8_t bestBSSID[6];
-    if (stationCount > firstStation) {
-        // We have a list to scan
-        Serial.printf("Scanning local Wifi Networks\r\n");
-        int stationsFound = WiFi.scanNetworks();
-        Serial.printf("%i networks found\r\n", stationsFound);
-        if (stationsFound > 0) {
-            for (int i = 0; i < stationsFound; ++i) {
-                // Print SSID and RSSI for each network found
-                String thisSSID = WiFi.SSID(i);
-                int thisRSSI = WiFi.RSSI(i);
-                String thisBSSID = WiFi.BSSIDstr(i);
-                Serial.printf("%3i : [%s] %s (%i)", i + 1, thisBSSID.c_str(), thisSSID.c_str(), thisRSSI);
-                // Scan our list of known external stations
-                for (int sta = firstStation; sta < stationCount; sta++) {
-                    if ((strcmp(stationList[sta].ssid, thisSSID.c_str()) == 0) ||
-                    (strcmp(stationList[sta].ssid, thisBSSID.c_str()) == 0)) {
-                        Serial.print("  -  Known!");
-                        // Chose the strongest RSSI seen
-                        if (thisRSSI > bestRSSI) {
-                            bestStation = sta;
-                            strncpy(bestSSID, thisSSID.c_str(), 64);
-                            // Convert char bssid[] to a byte array
-                            parseBytes(thisBSSID.c_str(), ':', bestBSSID, 6, 16);
-                            bestRSSI = thisRSSI;
-                        }
-                    }
-                }
-                Serial.println();
-            }
-        }
-    } else {
-        // No list to scan, therefore we are an 
-        accesspoint = true;
-    }
-
-    if (bestStation == -1) {
-        if (!accesspoint) {
-            #if defined(WIFI_AP_ENABLE)
-                Serial.println("No known networks found, entering AccessPoint fallback mode");
-                accesspoint = true;
-            #else
-                Serial.println("No known networks found");
-            #endif
-        } else {
-            Serial.println("AccessPoint mode selected in config");
-        }
-    } else {
-        Serial.printf("Connecting to Wifi Network %d: [%02X:%02X:%02X:%02X:%02X:%02X] %s \r\n",
-                       bestStation, bestBSSID[0], bestBSSID[1], bestBSSID[2], bestBSSID[3],
-                       bestBSSID[4], bestBSSID[5], bestSSID);
-        // Apply static settings if necesscary
-        if (stationList[bestStation].dhcp == false) {
-            #if defined(ST_IP)
-                Serial.println("Applying static IP settings");
-                #if !defined (ST_GATEWAY)  || !defined (ST_NETMASK)
-                    #error "You must supply both Gateway and NetMask when specifying a static IP address"
-                #endif
-                IPAddress staticIP(ST_IP);
-                IPAddress gateway(ST_GATEWAY);
-                IPAddress subnet(ST_NETMASK);
-                #if !defined(ST_DNS1)
-                    WiFi.config(staticIP, gateway, subnet);
-                #else
-                    IPAddress dns1(ST_DNS1);
-                #if !defined(ST_DNS2)
-                    WiFi.config(staticIP, gateway, subnet, dns1);
-                #else
-                    IPAddress dns2(ST_DNS2);
-                    WiFi.config(staticIP, gateway, subnet, dns1, dns2);
-                #endif
-                #endif
-            #else
-                Serial.println("Static IP settings requested but not defined in config, falling back to dhcp");
-            #endif
-        }
-        */
-        WiFi.setHostname(mdnsName);
-
-        // Initiate network connection request (3rd argument, channel = 0 is 'auto')
-        //WiFi.begin(bestSSID, stationList[bestStation].password, 0, bestBSSID);
-         ssid = readFile(SPIFFS, ssidPath);
-         pass = readFile(SPIFFS, passPath);
-        
-        WiFi.begin(ssid.c_str(), pass.c_str());
-
-        // Wait to connect, or timeout
-        unsigned long start = millis();
-        while ((millis() - start <= WIFI_WATCHDOG) && (WiFi.status() != WL_CONNECTED)) {
-            delay(500);
-            Serial.print('.');
-        }
-        // If we have connected, inform user
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("Client connection succeeded");
-            accesspoint = false;
-            // Note IP details
-            // streamURL = WiFi.localIP();
-            //net = WiFi.subnetMask();
-            //gw = WiFi.gatewayIP();
-           // Serial.printf("IP address: %d.%d.%d.%d\r\n",ip_addr[0],ip_addr[1],ip_addr[2],ip_addr[3]);
-           // Serial.printf("Netmask   : %d.%d.%d.%d\r\n",net[0],net[1],net[2],net[3]);
-            //Serial.printf("Gateway   : %d.%d.%d.%d\r\n",gw[0],gw[1],gw[2],gw[3]);
-            calcURLs();
-            // Flash the LED to show we are connected
-            for (int i = 0; i < 5; i++) {
-                flashLED(50);
-                delay(150);
-            }
-        } else {
-            Serial.println("Client connection Failed");
-            accesspoint = true;
-            WiFi.disconnect();   // (resets the WiFi scan)
-        }
-    //}
-
-    if (accesspoint && (WiFi.status() != WL_CONNECTED)) {
-        // The accesspoint has been enabled, and we have not connected to any existing networks
-
-        // Connect to Wi-Fi network with SSID and password
-    Serial.println("Setting AP (Access Point)");
-    // NULL sets an open Access Point
-    WiFi.softAP("REVERSE VENDO WIFI MANAGER", NULL);
-
-    IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP); 
-
-    // Web Server Root URL
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/wifimanager.html", "text/html");
-    });
-    
-    server.serveStatic("/", SPIFFS, "/");
-    
-    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
-      int params = request->params();
-      for(int i=0;i<params;i++){
-        const AsyncWebParameter* p = request->getParam(i);
-        if(p->isPost()){
-          // HTTP POST ssid value
-          if (p->name() == PARAM_INPUT_1) {
-            ssid = p->value().c_str();
-            Serial.print("SSID set to: ");
-            Serial.println(ssid);
-            // Write file to save value
-            writeFile(SPIFFS, ssidPath, ssid.c_str());
-          }
-          // HTTP POST pass value
-          if (p->name() == PARAM_INPUT_2) {
-            pass = p->value().c_str();
-            Serial.print("Password set to: ");
-            Serial.println(pass);
-            // Write file to save value
-            writeFile(SPIFFS, passPath, pass.c_str());
-          }
-          // HTTP POST ip value
-          if (p->name() == PARAM_INPUT_3) {
-            ip = p->value().c_str();
-           //ip = p->value();
-            Serial.print("IP Address set to: ");
-            Serial.println(ip);
-            // Write file to save value
-            writeFile(SPIFFS, ipPath, ip.c_str());
-          }
-          // HTTP POST gateway value
-          if (p->name() == PARAM_INPUT_4) {
-            gateway = p->value().c_str();
-            Serial.print("Gateway set to: ");
-            Serial.println(gateway);
-            // Write file to save value
-            writeFile(SPIFFS, gatewayPath, gateway.c_str());
-          }
-          //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
-        }
-      }
-      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
-      delay(3000);
-      ESP.restart();
-    });
-        
-        /*
-        #if defined(AP_CHAN)
-            Serial.println("Setting up Fixed Channel AccessPoint");
-            Serial.print("  SSID     : ");
-            Serial.println(stationList[0].ssid);
-            Serial.print("  Password : ");
-            Serial.println(stationList[0].password);
-            Serial.print("  Channel  : ");
-            Serial.println(AP_CHAN);
-            WiFi.softAP(stationList[0].ssid, stationList[0].password, AP_CHAN);
-        # else
-            Serial.println("Setting up AccessPoint");
-            Serial.print("  SSID     : ");
-            Serial.println(stationList[0].ssid);
-            Serial.print("  Password : ");
-            Serial.println(stationList[0].password);
-            WiFi.softAP(stationList[0].ssid, stationList[0].password);
-        #endif
-        #if defined(AP_ADDRESS)
-            // User has specified the AP details; apply them after a short delay
-            // (https://github.com/espressif/arduino-esp32/issues/985#issuecomment-359157428)
-            delay(100);
-            IPAddress local_IP(AP_ADDRESS);
-            IPAddress gateway(AP_ADDRESS);
-            IPAddress subnet(255,255,255,0);
-            WiFi.softAPConfig(local_IP, gateway, subnet);
-        #endif
-        // Note AP details
-        ip = WiFi.softAPIP();
-        net = WiFi.subnetMask();
-        gw = WiFi.gatewayIP();
-        strcpy(apName, stationList[0].ssid);
-        Serial.printf("IP address: %d.%d.%d.%d\r\n",ip[0],ip[1],ip[2],ip[3]);
-        calcURLs();
-        // Flash the LED to show we are connected
-        for (int i = 0; i < 5; i++) {
-            flashLED(150);
-            delay(50);
-        }
-        // Start the DNS captive portal if requested
-        if (stationList[0].dhcp == true) {
-            Serial.println("Starting Captive Portal");
-            dnsServer.start(DNS_PORT, "*", ip);
-            captivePortal = true;
-        }
-      */
-    }
-}
-
-
-void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
-
-  if(type == WS_EVT_CONNECT){
-
-    Serial.println("Websocket client connection received");
-
-  } else if(type == WS_EVT_DISCONNECT){
-    Serial.println("Client disconnected");
-
-  } else if(type == WS_EVT_DATA){
-
-    Serial.println("Data received: ");
-
-    for(int i=0; i < len; i++) {
-          Serial.print((char) data[i]);
-    }
-
-    Serial.println();
-    objectDetected(arg, data, len);
-  }
-}
-
-void objectDetected(void *arg, uint8_t *data, size_t len) {
-    AwsFrameInfo *info = (AwsFrameInfo*)arg;
-    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-
-        const uint8_t size = JSON_OBJECT_SIZE(1);
-        StaticJsonDocument<size> json;
-        DeserializationError err = deserializeJson(json, data);
-        if (err) {
-            Serial.print(F("deserializeJson() failed with code "));
-            Serial.println(err.c_str());
-            return;
-        }
-
-        const char *detectionResult = json["object"];
-        
-        if (strcmp(detectionResult, "bottle") == 0) {
-          ws.textAll("A bottle was detected.");
-          ws.textAll("Valid");
-        }
-        
-        else if (strcmp(detectionResult, "bottle") != 0) {
-          ws.textAll("Invalid");
-        }
-        
-        //delay(10000);
-        //Serial.println(detectionResult);
-    }
 }
 
 void writeFile(fs::FS &fs, const char * path, const char * message){
@@ -805,6 +519,153 @@ String readFile(fs::FS &fs, const char * path){
   //return String(file.read());
   fileContent.trim();
   return fileContent;
+}
+
+void WifiSetup() {
+    // Feedback that we are now attempting to connect
+    flashLED(300);
+    delay(100);
+    flashLED(300);
+    Serial.println("Starting WiFi");
+
+    // Disable power saving on WiFi to improve responsiveness
+    // (https://github.com/espressif/arduino-esp32/issues/1484)
+        WiFi.setSleep(false);
+    
+        WiFi.setHostname(mdnsName);
+
+        // Initiate network connection request 
+        
+         ssid = readFile(SPIFFS, ssidPath);
+         pass = readFile(SPIFFS, passPath);
+
+       /* if (!WiFi.config(ip_addr, gateway, subnet)) 
+       {
+          Serial.println("STA Failed to configure");
+       }
+       else 
+       {*/
+         WiFi.begin(ssid.c_str(), pass.c_str());
+       //}
+
+        // Wait to connect, or timeout
+        unsigned long start = millis();
+        while ((millis() - start <= 5000) && (WiFi.status() != WL_CONNECTED)) {
+            delay(500);
+            Serial.print('.');
+        }
+
+        //IPAddress IP = WiFi.localIP();
+        //Serial.print("IP address: ");
+        //Serial.println(IP); 
+
+
+        calcURLs();
+
+  }
+
+
+
+void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
+
+  if(type == WS_EVT_CONNECT){
+
+    Serial.println("Websocket client connection received");
+    ws.textAll("You are now connected.");
+
+  } else if(type == WS_EVT_DISCONNECT){
+    Serial.println("Client disconnected");
+
+  } else if(type == WS_EVT_DATA){
+
+    Serial.println("Data received: ");
+
+    for(int i=0; i < len; i++) {
+          Serial.print((char) data[i]);
+    }
+    ws.closeAll();
+
+    int chArr_length = strlen(myData.validation);
+
+     for (int i = 0; i < chArr_length; i++) {
+          Serial.print(myData.validation[i]);
+          myData.validation[i] = '\0';
+     }
+    
+    Serial.println();
+    objectDetected(arg, data, len);
+    while (millis() - millis() <= 10000) {
+            Serial.print('.');
+        }
+
+  }
+}
+
+void objectDetected(void *arg, uint8_t *data, size_t len) {
+    AwsFrameInfo *info = (AwsFrameInfo*)arg;
+    if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+
+        const uint8_t size = JSON_OBJECT_SIZE(1);
+        StaticJsonDocument<size> json;
+        DeserializationError err = deserializeJson(json, data);
+        if (err) {
+            Serial.print(F("deserializeJson() failed with code "));
+            Serial.println(err.c_str());
+            return;
+        }
+
+        const char *detectionResult = json["object"];
+        
+        if (strcmp(detectionResult, "bottle") == 0) {
+          ws.textAll("A bottle was detected.");
+          //ws.textAll("Valid");
+          strcat(myData.validation, "Valid");
+        }
+        
+        else if (strcmp(detectionResult, "bottle") != 0) {
+          //ws.textAll("Invalid");
+          strcat(myData.validation, "Invalid");
+        }
+        //vTaskDelay(pdMS_TO_TICKS(2000));
+        
+        Serial.println(strlen(myData.validation));
+        esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+
+    }
+}
+
+// callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+
+  
+  //if (!(WiFi.SSID() == ssid) || wifi_discovered) 
+  if (wifi_discovered) 
+  {
+    WifiSetup();
+    startCameraServer(httpPort, streamPort); 
+   /* unsigned long start = millis();
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    Serial.print("Reconnecting");
+
+    while ((millis() - start <= 8000) && (WiFi.status() != WL_CONNECTED)) {
+            delay(500);
+            Serial.print('.');
+
+            if (WiFi.status() == WL_CONNECTED) 
+            {
+              calcURLs();
+              break;
+            } }*/
+        } 
+
+
+    wifi_discovered = false;
+    
+    delay(2000);
+    //wifi_discovered = false; 
+  //else Serial.println("Delivery Failed"); 
 }
 
 void setup() {
@@ -864,9 +725,49 @@ void setup() {
     */
 
     // Start Wifi and loop until we are connected or have started an AccessPoint
-    while ((WiFi.status() != WL_CONNECTED) && !accesspoint)  {
-        WifiSetup();
-        delay(1000);
+    //while ((WiFi.status() != WL_CONNECTED) && !accesspoint)  {
+    while (WiFi.status() != WL_CONNECTED) {
+
+
+       /*if (!WiFi.config(local_IP, gateway, subnet)) 
+       {
+          Serial.println("STA Failed to configure");
+       }
+       else
+       {
+           WiFi.config(local_IP, gateway, subnet);*/
+           WiFi.begin("RVM WiFi Module");
+       //}
+
+        // Wait to connect, or timeout
+        unsigned long start = millis();
+        while ((millis() - start <= 5000) && (WiFi.status() != WL_CONNECTED)) {
+            delay(500);
+            Serial.print('.');
+        }
+
+        Serial.print("AP IP address: ");
+        Serial.println(WiFi.localIP()); 
+    }
+
+    // Init ESP-NOW
+      if (esp_now_init() != ESP_OK) {
+      Serial.println("Error initializing ESP-NOW");
+      return;
+    }
+
+      // Once ESPNow is successfully Init, we will register for Send CB to
+      // get the status of Trasnmitted packet
+      esp_now_register_send_cb(OnDataSent);
+  
+      // Register peer
+      memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+      peerInfo.encrypt = false;
+  
+      // Add peer        
+      if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add peer");
+      return;
     }
 
         Serial.println("OTA is disabled");
@@ -920,10 +821,87 @@ void setup() {
     // As a final init step chomp out the serial buffer in case we have recieved mis-keys or garbage during startup
     while (Serial.available()) Serial.read();
 
+    // Web Server Root URL
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/wifimanager.html", "text/html");
+    });
+    
+    server.serveStatic("/", SPIFFS, "/");
+    
+    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+      int params = request->params();  
+      for(int i=0;i<params;i++){
+        const AsyncWebParameter* p = request->getParam(i);
+        if(p->isPost()){
+          // HTTP POST ssid value
+          if (p->name() == PARAM_INPUT_1) {
+            ssid = p->value().c_str();
+            Serial.print("SSID set to: ");
+            Serial.println(ssid);
+            // Write file to save value
+            writeFile(SPIFFS, ssidPath, ssid.c_str());
+          }
+          // HTTP POST pass value
+          if (p->name() == PARAM_INPUT_2) {
+            pass = p->value().c_str();
+            Serial.print("Password set to: ");
+            Serial.println(pass);
+            // Write file to save value
+            writeFile(SPIFFS, passPath, pass.c_str());
+          }
+          // HTTP POST ip value
+          if (p->name() == PARAM_INPUT_3) {
+            ip = p->value().c_str();
+           //ip = p->value();
+            Serial.print("IP Address set to: ");
+            Serial.println(ip);
+            // Write file to save value
+            writeFile(SPIFFS, ipPath, ip.c_str());
+          }
+          // HTTP POST gateway value
+          if (p->name() == PARAM_INPUT_4) {
+            gw = p->value().c_str();
+            Serial.print("Gateway set to: ");
+            Serial.println(gw);
+            // Write file to save value
+            writeFile(SPIFFS, gatewayPath, gw.c_str());
+          }
+          //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
+          
+        }
+      }
+      request->send(200, "text/plain", "Done. ESP will restart, connect to same WiFi network and go to IP address: " + ip);
+      
+      myData.APshared = false;
+      ssid.toCharArray(myData.connected_to, ssid.length() + 1);
+      wifi_discovered = true;
+      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+    });      
+
     ws.onEvent(onWsEvent);
     server.addHandler(&ws);
 
     server.begin();
+
+  ssid = readFile(SPIFFS, ssidPath);
+  pass = readFile(SPIFFS, passPath);
+  
+  /* esp32_ip = WiFi.localIP().toString();
+  Serial.println(esp32_ip);
+   
+  esp32_ip.toCharArray(myData.IP, esp32_ip.length() + 1); */
+  //Serial.println(myData.IP);
+  myData.APshared = false;
+  //myData.IPtransmission = true;
+
+  if (ssid.length() > 0) 
+  {  
+    ssid.toCharArray(myData.connected_to, ssid.length() + 1);
+    Serial.println(myData.connected_to);
+  }
+  
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+  Serial.println(result == ESP_OK ? "ESP32CAM IP was sent" : "Attempt to send ESP32CAM IP failed");
 }
 
 void loop() {
@@ -932,42 +910,66 @@ void loop() {
      * The stream and URI handler processes initiated by the startCameraServer() call at the
      * end of setup() will handle the camera and UI processing from now on.
     */
-    if (accesspoint) {
-        // Accespoint is permanently up, so just loop, servicing the captive portal as needed
-        // Rather than loop forever, follow the watchdog, in case we later add auto re-scan.
-        unsigned long start = millis();
-        while (millis() - start < WIFI_WATCHDOG ) {
-            delay(100);
-            //if (otaEnabled) ArduinoOTA.handle();
-            handleSerial();
-            if (captivePortal) dnsServer.processNextRequest();
-        }
-    } else {
-        // client mode can fail; so reconnect as appropriate
-        static bool warned = false;
-        if (WiFi.status() == WL_CONNECTED) {
-            // We are connected, wait a bit and re-check
-            if (warned) {
-                // Tell the user if we have just reconnected
-                Serial.println("WiFi reconnected");
-                warned = false;
-            }
-            // loop here for WIFI_WATCHDOG, turning debugData true/false depending on serial input..
-            unsigned long start = millis();
-            while (millis() - start < WIFI_WATCHDOG ) {
-                delay(100);
-                //if (otaEnabled) ArduinoOTA.handle();
-                handleSerial();
-            }
-        } else {
-            // disconnected; attempt to reconnect
-            if (!warned) {
-                // Tell the user if we just disconnected
-                WiFi.disconnect();  // ensures disconnect is complete, wifi scan cleared
-                Serial.println("WiFi disconnected, retrying");
-                warned = true;
-            }
-            WifiSetup();
-        }
+
+    unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillis >= interval) {
+    // Save the last time a new reading was published
+    previousMillis = currentMillis;
+    
+    myData.APshared = true;
+
+if (WiFi.status() != WL_CONNECTED || !(WiFi.SSID() == ssid)) {
+
+    if (WiFi.status() != WL_CONNECTED)
+    { 
+      WiFi.begin("RVM WiFi Module");
+
+      Serial.print("To access the WiFi manager, go to this URL on your browser: http://");
+      Serial.println(WiFi.localIP());
+      delay(15000); 
+      //myData.APshared = false;
+      //ESP.restart();
     }
+    else if(!(WiFi.SSID() == ssid)) {
+      
+      //WiFi.begin(ssid.c_str(), pass.c_str());
+      WifiSetup();
+      startCameraServer(httpPort, streamPort);
+      delay(5000);
+
+      esp32_ip = WiFi.localIP().toString();
+      Serial.println(esp32_ip);
+      esp32_ip.toCharArray(myData.IP, esp32_ip.length() + 1);
+  
+      myData.APshared = false;
+      myData.IPtransmission = true;
+
+      if (ssid.length() > 0) 
+      {  
+        ssid.toCharArray(myData.connected_to, ssid.length() + 1);
+        Serial.println(myData.connected_to);
+      }
+      esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+    }
+    //calcURLs();
+     
+}
+    //Set values to send
+    esp32_ip = WiFi.localIP().toString();
+    esp32_ip.toCharArray(myData.IP, esp32_ip.length() + 1);
+    Serial.println(myData.IP);
+
+     
+    //Send message via ESP-NOW
+    //esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+    /* if (result == ESP_OK) {
+      Serial.println("Sent with success");
+    }
+    else {
+      Serial.println("Error sending the data");
+    }
+    */
+  }
+
 }

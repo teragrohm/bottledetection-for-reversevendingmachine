@@ -21,7 +21,7 @@
 #include <WiFi.h>
 
 #include "index_ov2640.h"
-#include "index_ov3660.h"
+//#include "index_ov3660.h"
 #include "index_other.h"
 #include "css.h"
 #include "src/favicons.h"
@@ -57,12 +57,9 @@ extern bool autoLamp;
 extern bool filesystem;
 extern String critERR;
 extern bool debugData;
-extern bool haveTime;
 extern int sketchSize;
 extern int sketchSpace;
 extern String sketchMD5;
-extern bool otaEnabled;
-extern char otaPassword[];
 extern unsigned long xclk;
 extern int sensorPID;
 
@@ -100,6 +97,7 @@ void serialDump() {
     Serial.printf("Sketch Size: %i (total: %i, %.1f%% used)\r\n", sketchSize, sketchSpace, sketchPct);
     Serial.printf("MD5: %s\r\n", sketchMD5.c_str());
     Serial.printf("ESP sdk: %s\r\n", ESP.getSdkVersion());
+    /*
     if (otaEnabled) {
          if (strlen(otaPassword) != 0) {
             Serial.printf("OTA: Enabled, Password: %s\n\r", otaPassword);
@@ -109,6 +107,7 @@ void serialDump() {
     } else {
         Serial.printf("OTA: Disabled\n\r");
     }
+    */
     // Network
     if (accesspoint) {
         if (captivePortal) {
@@ -575,6 +574,7 @@ static esp_err_t dump_handler(httpd_req_t *req){
 
     // System
     d+= sprintf(d,"<h2>System</h2>\n");
+    /*
     if (haveTime) {
         struct tm timeinfo;
         if(getLocalTime(&timeinfo)){
@@ -584,6 +584,7 @@ static esp_err_t dump_handler(httpd_req_t *req){
             d+= sprintf(d,"Time: %s<br>\n", timeStringBuff);
         }
     }
+    */
     int64_t sec = esp_timer_get_time() / 1000000;
     int64_t upDays = int64_t(floor(sec/86400));
     int upHours = int64_t(floor(sec/3600)) % 24;
@@ -713,9 +714,11 @@ static esp_err_t index_handler(httpd_req_t *req){
         if (critERR.length() > 0) return error_handler(req);
         httpd_resp_set_type(req, "text/html");
         httpd_resp_set_hdr(req, "Content-Encoding", "identity");
+        /*
         if (sensorPID == OV3660_PID) {
             return httpd_resp_send(req, (const char *)index_ov3660_html, index_ov3660_html_len);
         }
+        */
         return httpd_resp_send(req, (const char *)index_ov2640_html, index_ov2640_html_len);
     } else if(strncmp(view,"portal", sizeof(view)) == 0) {
         //Prototype captive portal landing page.

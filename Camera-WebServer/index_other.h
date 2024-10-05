@@ -2,7 +2,7 @@
  * simpleviewer and streamviewer
  */
 
-const uint8_t index_simple_html[] = R"=====(<!doctype html>
+char index_simple_html[] = R"=====(<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -158,7 +158,7 @@ const uint8_t index_simple_html[] = R"=====(<!doctype html>
     var websocket;
     
     // Initialization
-    window.addEventListener('load', onLoad);
+    //window.addEventListener('load', onLoad);
 
     function onLoad(event) {
         initWebSocket();
@@ -174,7 +174,7 @@ const uint8_t index_simple_html[] = R"=====(<!doctype html>
 
     function onConnect(event) {
         console.log('Connection opened');
-        websocket.send("Hello")
+        //websocket.send("Hello")
     }
 
     function onDisconnect(event) {
@@ -185,6 +185,8 @@ const uint8_t index_simple_html[] = R"=====(<!doctype html>
     function onMessage(event) {
     //console.log('Received a notification from ${event.origin}');
     console.log(event.data);
+
+    detectObject();
     }
     
     var rangeUpdateScheduled = false
@@ -278,7 +280,7 @@ const uint8_t index_simple_html[] = R"=====(<!doctype html>
       streamButton.innerHTML = 'Stop Stream';
       streamButton.setAttribute("title", `Stop the stream`);
       show(viewContainer);
-      
+      initWebSocket();
     }
 
     const applyRotation = () => {
