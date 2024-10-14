@@ -7,7 +7,7 @@ char index_simple_html[] = R"=====(<!doctype html>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title id="title">ESP32-CAM Simplified View</title>
+    <title id="title">ESP32-CAM Simplified View</title>   
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="stylesheet" type="text/css" href="/style.css">
@@ -21,11 +21,16 @@ char index_simple_html[] = R"=====(<!doctype html>
         }
       }
     </style>
-    <script src="https:\/\/cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"> </script>
+
+    <!--script src="https:\/\/cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"--> 
+    <script src="https:\/\/cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
     <script src="https:\/\/cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.1.0"> </script>
+    <script src="https:\/\/cdn.roboflow.com/0.2.26/roboflow.js"></script>
+    
   </head>
 
-  <body>
+  <body class="loading">
+    <body>
     <section class="main">
       <div id="logo">
         <label for="nav-toggle-cb" id="nav-toggle" style="float:left;" title="Settings">&#9776;&nbsp;</label>
@@ -80,12 +85,16 @@ char index_simple_html[] = R"=====(<!doctype html>
       </div>
     </section>
   </body>
+</body>
 
   <script>
+  
   document.addEventListener('DOMContentLoaded', function (event) {
     var baseHost = document.location.origin;
     var streamURL = 'Undefined';
-    var Model;
+    var model;
+    var modelA;
+    var modelB;
 
     const settings = document.getElementById('sidebar')
     const waitSettings = document.getElementById('wait-settings')
@@ -186,8 +195,9 @@ char index_simple_html[] = R"=====(<!doctype html>
     //console.log('Received a notification from ${event.origin}');
     console.log(event.data);
 
-    detectObject();
-    }
+    detectObject(0);
+    detectObject(1);
+   }
     
     var rangeUpdateScheduled = false
     var latestRangeConfig
@@ -237,9 +247,29 @@ char index_simple_html[] = R"=====(<!doctype html>
         }
       })
 
+    var publishable_key = "rf_p5taPrAFTXV36W0EMZLaGGt2sHu1";
+    var toLoad = {
+        model: "taco-dataset-brnom",
+        version: 1
+    };
+    
+    roboflow
+    .auth({
+        publishable_key: publishable_key
+    })
+    .load(toLoad)
+    .then(function (m) {
+        modelB = m;
+        //hide(loadingMessage);
+        //show(streamButton);
+        //resolve();
+    });
+
+
     function loadModels() {
       cocoSsd.load().then(cocoSsd_Model => {
-        Model = cocoSsd_Model;
+        modelA = cocoSsd_Model;
+
         hide(loadingMessage);
         show(streamButton);
       }); 
@@ -357,14 +387,32 @@ char index_simple_html[] = R"=====(<!doctype html>
     }
 
     view.onload = () => {
-      detectObject();
+      detectObject(0);
     }
 
     var children = [];
+    
+function detectObject(num) {
 
-function detectObject() {
+let n;
+let match_level;
+
+  switch(num) {
+    
+    case 0:
+      model = modelA;
+      break;
+      
+    case 1:
+      model = modelB;
+      //match_level = 
+      break;
+  }
+
   // Now let's start classifying a frame in the stream.
-  Model.detect(view).then(function (predictions) {
+  
+  model.detect(view).then(function (predictions, match_level) {
+    
     // Remove any highlighting we did previous frame.
     for (let i = 0; i < children.length; i++) {
       viewContainer.removeChild(children[i]);
@@ -373,19 +421,28 @@ function detectObject() {
     
     // Now lets loop through predictions and draw them to the live view if
     // they have a high confidence score.
-    for (let n = 0; n < predictions.length; n++) {
+    for (n = 0; n < predictions.length; n++) {
+
+      match_level = 'score' in predictions[n] ? predictions[n].score : predictions[n].confidence;
+ 
       // If we are over 66% sure we are sure we classified it right, draw it!
-      if (predictions[n].score > 0.66) {
+      //if (predictions[n].score > 0.7) {
 
         //if (predictions[n].class == 'bottle') {
-          console.log('A ' + predictions[n].class + ' was detected');
+          if (predictions[n].class != 'vase') {
+
+          //console.log('A ' + predictions[n].class + ' was detected');
           //websocket.send("Valid")
           websocket.send(JSON.stringify({'object':predictions[n].class}));
         //}
-          
+      //}
+
+        console.log('A ' + predictions[n].class + ' was detected');
+         
         const p = document.createElement('p');
         p.innerText = predictions[n].class  + ' - with ' 
-            + Math.round(parseFloat(predictions[n].score) * 100) 
+           // + Math.round(parseFloat(predictions[n].score) * 100) 
+           + Math.round(parseFloat(match_level) * 100) 
             + '% confidence.';
         p.style = 'margin-left: ' + predictions[n].bbox[0] + 'px; margin-top: '
             + (predictions[n].bbox[1] - 10) + 'px; width: ' 
@@ -402,14 +459,19 @@ function detectObject() {
         viewContainer.appendChild(p);
         children.push(highlighter);
         children.push(p);
-      }
+
+        return;
+     // }
+     } 
     }
     
       // Call this function again to keep predicting classes when the browser is ready.
       window.requestAnimationFrame(detectObject);
     });
-   }
-  })
+   
+  }
+})
+  
   </script>
 </html>)=====";
 
