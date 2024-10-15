@@ -10,6 +10,7 @@
 #include "src/parsebytes.h"
 #include <ESPmDNS.h>
 #include <ESPAsyncWebServer.h>
+#include <DNSServer.h>
 #include <ArduinoJson.h>
 //#include "myconfig.h"
 
@@ -521,6 +522,22 @@ String readFile(fs::FS &fs, const char * path){
   return fileContent;
 }
 
+class CaptiveRequestHandler : public AsyncWebHandler {
+public:
+  CaptiveRequestHandler() {}
+  virtual ~CaptiveRequestHandler() {}
+
+  bool canHandle(AsyncWebServerRequest *request){
+    //request->addInterestingHeader("ANY");
+    return true;
+  }
+
+  void handleRequest(AsyncWebServerRequest *request) {
+    //request->send_P(200, "text/html", index_html);
+    request->send(SPIFFS, "/wifimanager.html", "text/html"); 
+  }
+};
+
 void WifiSetup() {
     // Feedback that we are now attempting to connect
     flashLED(300);
@@ -545,7 +562,8 @@ void WifiSetup() {
        }
        else 
        {*/
-         WiFi.begin(ssid.c_str(), pass.c_str());
+         //WiFi.begin(ssid.c_str(), pass.c_str());
+         WiFi.begin("realme 5i", "12345678");
        //}
 
         // Wait to connect, or timeout
@@ -594,7 +612,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     
     Serial.println();
     objectDetected(arg, data, len);
-    while (millis() - millis() <= 10000) {
+    while (millis() - millis() <= 20000) {
             Serial.print('.');
         }
 
@@ -614,15 +632,18 @@ void objectDetected(void *arg, uint8_t *data, size_t len) {
             return;
         }
 
-        const char *detectionResult = json["object"];
+        //const char *detectionResult = json["object"];
+        String detectionResult = json["object"];
         
-        if (strcmp(detectionResult, "bottle") == 0) {
+        //if (strcmp(detectionResult, "bottle") == 0) {
+        if (detectionResult.indexOf("bottle") >= 0) {
           ws.textAll("A bottle was detected.");
           //ws.textAll("Valid");
           strcat(myData.validation, "Valid");
         }
         
-        else if (strcmp(detectionResult, "bottle") != 0) {
+        //else if (strcmp(detectionResult, "bottle") != 0) {
+        else if (detectionResult.indexOf("bottle") < 0) {
           //ws.textAll("Invalid");
           strcat(myData.validation, "Invalid");
         }
@@ -876,7 +897,9 @@ void setup() {
       ssid.toCharArray(myData.connected_to, ssid.length() + 1);
       wifi_discovered = true;
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-    });      
+    });
+    dnsServer.start(100, "*", WiFi.localIP());
+    server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);//only when requested from AP      
 
     ws.onEvent(onWsEvent);
     server.addHandler(&ws);
