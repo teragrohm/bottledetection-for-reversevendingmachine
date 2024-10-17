@@ -17,8 +17,8 @@ int multiplier[3] = {1, 0, 1};
 int previous_millis = 0;
 //int valid_inserted = 7;
 uint8_t valid_inserted = 0;
-int max_bottles = 10;
-int ballpen_count = 10;
+int max_bottles = 5;
+int ballpen_count = 3;
 bool reward;
 bool full_of_bottles = false;
 
@@ -69,7 +69,8 @@ void resetBottleCount() {
   lcd.setCursor(1,0);
   lcd.print(valid_inserted);
   lcd.setCursor(3,0);
-  lcd.print("out of 10");
+  //lcd.print("out of 10");
+  lcd.print("out of 5");
   lcd.setCursor(13,0);
   lcd.print("BOTTLES");
   lcd.setCursor(3,1);
@@ -83,6 +84,7 @@ void updateBottleCount(int num) {
     if (valid_inserted < max_bottles) {
 
       valid_inserted += 1;
+      //valid_inserted = 0;
       Serial.print("Bottles inserted: ");
       Serial.println(valid_inserted);
 
@@ -113,6 +115,8 @@ void dispenseReward() {
   delay(500);
 
   ballpen_count -= 1;
+  delay(3000);
+  Serial.println(ballpen_count);
   //EEPROM.write(5, ballpen_count);
 /*
   if (ballpen_count == 0) {
@@ -120,9 +124,10 @@ void dispenseReward() {
   }
 */
   raiseAlert();
-  delay(5000);
+  delay(2000);
 
   valid_inserted = 0;
+  EEPROM.write(10, valid_inserted);
   lcd.clear();
   resetBottleCount();
   reward = false;
@@ -132,7 +137,7 @@ void raiseAlert() {
 
   gsmModule.println("AT+CMGF=1"); // Configuring TEXT mode
   updateSerial();
-  gsmModule.println("AT+CMGS=\"+639xxxxxxxxx\""); //change ZZ with country code and xxxxxxxxxxx with phone number to sms
+  gsmModule.println("AT+CMGS=\"+639302641256\""); //change ZZ with country code and xxxxxxxxxxx with phone number to sms
   delay(500);
 
   if (ballpen_count == 0) {
@@ -223,6 +228,7 @@ void setup(){
 	Serial.begin(9600);
 	gsmModule.begin(9600);
   valid_inserted = EEPROM.read(10);
+  //valid_inserted = 0;
   //ballpen_count = EEPROM.read(5);
   delay(1000);
 
