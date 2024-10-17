@@ -553,7 +553,8 @@ void WifiSetup() {
 
         // Initiate network connection request 
         
-         ssid = readFile(SPIFFS, ssidPath);
+         //ssid = readFile(SPIFFS, ssidPath);
+         ssid = "realme 5i";
          pass = readFile(SPIFFS, passPath);
 
        /* if (!WiFi.config(ip_addr, gateway, subnet)) 
@@ -757,7 +758,8 @@ void setup() {
        else
        {
            WiFi.config(local_IP, gateway, subnet);*/
-           WiFi.begin("RVM WiFi Module");
+           //WiFi.begin("RVM WiFi Module");
+           WiFi.begin("realme 5i", ("12345678"));
        //}
 
         // Wait to connect, or timeout
@@ -906,7 +908,8 @@ void setup() {
 
     server.begin();
 
-  ssid = readFile(SPIFFS, ssidPath);
+  //ssid = readFile(SPIFFS, ssidPath);
+  ssid = "realme 5i";
   pass = readFile(SPIFFS, passPath);
   
   /* esp32_ip = WiFi.localIP().toString();
@@ -946,7 +949,8 @@ if (WiFi.status() != WL_CONNECTED || !(WiFi.SSID() == ssid)) {
 
     if (WiFi.status() != WL_CONNECTED)
     { 
-      WiFi.begin("RVM WiFi Module");
+      //WiFi.begin("RVM WiFi Module");
+      WiFi.begin("realme 5i", "12345678");
 
       Serial.print("To access the WiFi manager, go to this URL on your browser: http://");
       Serial.println(WiFi.localIP());
