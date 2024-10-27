@@ -170,12 +170,12 @@ void raiseAlert() {
   }
 
 if (ballpen_count == 0 || full_of_bottles) {
-  for (int j = 0; j < 5; j++) {
+  for (int j = 0; j < 10; j++) {
     for (int i = 0; i < 3; i++) {
 
       bool pin_stat = multiplier[i] == 1;
-      digitalWrite(buzzer_pin, pin_stat);
-      delay(500);
+      digitalWrite(buzzer_pin, !pin_stat);
+      delay(300);
     }
   } 
  }
