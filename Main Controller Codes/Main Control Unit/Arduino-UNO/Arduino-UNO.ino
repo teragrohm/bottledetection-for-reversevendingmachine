@@ -225,10 +225,11 @@ void updateSerial()
 
 void setup(){
 	
-	Serial.begin(9600);
-	gsmModule.begin(9600);
+  Serial.begin(9600);
+  gsmModule.begin(9600);
+  valid_inserted = 0;
+  EEPROM.write(10, valid_inserted);
   valid_inserted = EEPROM.read(10);
-  //valid_inserted = 0;
   //ballpen_count = EEPROM.read(5);
   delay(1000);
 
@@ -287,6 +288,7 @@ String currentIP;
     {
       result = 1;
       updateBottleCount(result);
+      delay(1000);
     }
 
     cameraIP = currentIP;
