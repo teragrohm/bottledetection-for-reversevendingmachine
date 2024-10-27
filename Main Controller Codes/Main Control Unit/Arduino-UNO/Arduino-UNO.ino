@@ -117,7 +117,7 @@ void dispenseReward() {
   ballpen_count -= 1;
   delay(3000);
   Serial.println(ballpen_count);
-  //EEPROM.write(5, ballpen_count);
+  EEPROM.write(5, ballpen_count);
 /*
   if (ballpen_count == 0) {
     resetBallpenCount();
@@ -230,7 +230,16 @@ void setup(){
   valid_inserted = 0;
   EEPROM.write(10, valid_inserted);
   valid_inserted = EEPROM.read(10);
-  //ballpen_count = EEPROM.read(5);
+  ballpen_count = EEPROM.read(5);
+  
+  if (!(ballpen_count > 0)) {
+    
+    EEPROM.write(5,3);
+    ballpen_count = EEPROM.read(5);
+  }
+
+  Serial.print("Ballpens: ");
+  Serial.println(ballpen_count);
   delay(1000);
 
   feeder.attach(7);
