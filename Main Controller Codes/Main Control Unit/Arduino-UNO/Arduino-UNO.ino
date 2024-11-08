@@ -15,9 +15,9 @@ int proximity = 10;
 int multiplier[3] = {1, 0, 1};
 
 int previous_millis = 0;
-//int valid_inserted = 7;
-uint8_t valid_inserted = 0;
-int max_bottles = 5;
+//uint8_t valid_inserted = 0;
+uint8_t valid_inserted;
+int max_bottles = 10;
 int ballpen_count = 3;
 bool reward;
 bool full_of_bottles = false;
@@ -69,8 +69,8 @@ void resetBottleCount() {
   lcd.setCursor(1,0);
   lcd.print(valid_inserted);
   lcd.setCursor(3,0);
-  //lcd.print("out of 10");
-  lcd.print("out of 5");
+  lcd.print("out of 10");
+  //lcd.print("out of 5");
   lcd.setCursor(13,0);
   lcd.print("BOTTLES");
   lcd.setCursor(3,1);
@@ -92,6 +92,12 @@ void updateBottleCount(int num) {
     }
     if (valid_inserted == max_bottles) {
       lcd.setCursor(0,0);
+
+      if (max_bottles < 10) {
+
+        lcd.print("0");
+      }
+
       reward = true;
    }
     // Write number of bottles to LCD Display
@@ -112,7 +118,7 @@ void dispenseReward() {
   dispenser.write(90);
   delay(500);
   dispenser.write(0);
-  delay(500);
+  delay(500); 
 
   ballpen_count -= 1;
   delay(3000);
@@ -179,6 +185,8 @@ if (ballpen_count == 0 || full_of_bottles) {
     }
   } 
  }
+ lcd.clear();
+ resetBottleCount();
 }
 
 void invalidWarning() {
@@ -201,7 +209,9 @@ void scrollText(int row, String message, int interval, int col) {
   //message = message + " "; 
   for (int position = 0; position < (message.length() + 1 - col); position++) {
 
-    if (Serial.available() > 0) break;
+    if (Serial.available() > 0 || digitalRead(proximity) == LOW) {
+      break;
+    }
 
     lcd.setCursor(0, row);
     lcd.print(message.substring(position, position + col));
@@ -227,14 +237,15 @@ void setup(){
 	
   Serial.begin(9600);
   gsmModule.begin(9600);
-  valid_inserted = 0;
-  EEPROM.write(10, valid_inserted);
+  //valid_inserted = 0;
+  //EEPROM.write(10, valid_inserted);
   valid_inserted = EEPROM.read(10);
   ballpen_count = EEPROM.read(5);
   
   if (!(ballpen_count > 0)) {
-    
-    EEPROM.write(5,3);
+
+    ballpen_count = 3;
+    EEPROM.write(5,ballpen_count);
     ballpen_count = EEPROM.read(5);
   }
 
@@ -265,8 +276,18 @@ void loop(){
 
   scrollText(3, displayIP + cameraIP, 250, 20);
   if (!(Serial.available() > 0)) delay(5000);
-  
-	
+
+  while (digitalRead(proximity) == LOW && (millis() - previous_millis >= 10000))
+   {
+    if (digitalRead(proximity) == HIGH) break;
+   }
+   if (digitalRead(proximity) == LOW) 
+   {
+    Serial.println("Bottle bin is full");
+    full_of_bottles = true;
+    raiseAlert();
+   }
+ 	
 String currentIP;
 
 	//while(ArduinoUno.available()>0){
@@ -334,12 +355,12 @@ String currentIP;
     dispenseReward();
    }
 
-   while (digitalRead(proximity) == HIGH && (millis() - previous_millis >= 10000))
-   {
-    if (digitalRead(proximity) == LOW) break;
-   }
-   if (digitalRead(proximity) == HIGH) full_of_bottles = true;
+   
+ /*if (digitalRead(proximity) == LOW) 
+{
+  Serial.println("Bottle bin is full");
+  full_of_bottles = true;
+  raiseAlert();*/
  }
-
 //delay(30);
 }
