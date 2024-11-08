@@ -69,7 +69,8 @@ bool wifi_discovered = false;
 
 
 //MAC Address of the receiver 
-uint8_t broadcastAddress[] = {0x08, 0x3A, 0x8D, 0xCC, 0xD3, 0xE8};
+//uint8_t broadcastAddress[] = {0x08, 0x3A, 0x8D, 0xCC, 0xD3, 0xE8};
+uint8_t broadcastAddress[] = {0x40, 0xF5, 0x20, 0x2E, 0x79, 0x9B};
 
 //Structure example to send data
 //Must match the receiver structure
@@ -89,6 +90,7 @@ esp_now_peer_info_t peerInfo;
 struct_message myData;
 
 String esp32_ip;
+bool camera_ready;
 
 unsigned long previousMillis = 0;   // Stores last time temperature was published
 const long interval = 30000;        // Interval at which to publish sensor readings
@@ -596,13 +598,14 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     Serial.println("Client disconnected");
 
   } else if(type == WS_EVT_DATA){
+    camera_ready = false;
 
     Serial.println("Data received: ");
 
     for(int i=0; i < len; i++) {
           Serial.print((char) data[i]);
     }
-    ws.closeAll();
+    //ws.closeAll();
 
     int chArr_length = strlen(myData.validation);
 
@@ -613,10 +616,9 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
     
     Serial.println();
     objectDetected(arg, data, len);
-    while (millis() - millis() <= 20000) {
+    /* while (millis() - millis() <= 60000) {
             Serial.print('.');
-        }
-
+        } */ 
   }
 }
 
@@ -652,7 +654,10 @@ void objectDetected(void *arg, uint8_t *data, size_t len) {
         
         Serial.println(strlen(myData.validation));
         esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-
+       /* while (millis() - millis() <= 30000) {
+            Serial.print('.');
+        }*/
+        ws.textAll("Ready");
     }
 }
 
@@ -758,8 +763,8 @@ void setup() {
        else
        {
            WiFi.config(local_IP, gateway, subnet);*/
-           //WiFi.begin("RVM WiFi Module");
-           WiFi.begin("realme 5i", ("12345678"));
+           WiFi.begin("RVM WiFi Module");
+           //WiFi.begin("realme 5i", ("12345678"));
        //}
 
         // Wait to connect, or timeout

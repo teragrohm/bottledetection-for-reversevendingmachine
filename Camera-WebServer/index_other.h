@@ -92,6 +92,7 @@ char index_simple_html[] = R"=====(<!doctype html>
   document.addEventListener('DOMContentLoaded', function (event) {
     var baseHost = document.location.origin;
     var streamURL = 'Undefined';
+    var ready;
     var model;
     var modelA;
     var modelB;
@@ -195,8 +196,14 @@ char index_simple_html[] = R"=====(<!doctype html>
     //console.log('Received a notification from ${event.origin}');
     console.log(event.data);
 
-    detectObject(0);
-    detectObject(1);
+    if (event.data == "Ready") 
+    {
+      setTimeout(function(){
+
+         detectObject(0);
+      }, 15000);
+    }
+    //detectObject(1);
    }
     
     var rangeUpdateScheduled = false
@@ -414,10 +421,10 @@ let match_level;
   model.detect(view).then(function (predictions, match_level) {
     
     // Remove any highlighting we did previous frame.
-    for (let i = 0; i < children.length; i++) {
+     for (let i = 0; i < children.length; i++) {
       viewContainer.removeChild(children[i]);
     }
-    children.splice(0);
+    children.splice(0); 
     
     // Now lets loop through predictions and draw them to the live view if
     // they have a high confidence score.
@@ -426,16 +433,16 @@ let match_level;
       match_level = 'score' in predictions[n] ? predictions[n].score : predictions[n].confidence;
  
       // If we are over 66% sure we are sure we classified it right, draw it!
-      //if (predictions[n].score > 0.7) {
+      if (predictions[n].score > 0.6) {
 
         //if (predictions[n].class == 'bottle') {
           if (predictions[n].class != 'vase') {
 
           //console.log('A ' + predictions[n].class + ' was detected');
           //websocket.send("Valid")
-          websocket.send(JSON.stringify({'object':predictions[n].class}));
+            websocket.send(JSON.stringify({'object':predictions[n].class}));
         //}
-      //}
+      }
 
         console.log('A ' + predictions[n].class + ' was detected');
          
@@ -459,6 +466,12 @@ let match_level;
         viewContainer.appendChild(p);
         children.push(highlighter);
         children.push(p);
+
+       /* for (let i = 0; i < children.length; i++) {
+          
+          viewContainer.removeChild(children[i]);
+        }
+    children.splice(0);*/
 
         return;
      // }
