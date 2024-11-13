@@ -173,6 +173,10 @@ void raiseAlert() {
     lcd.print("IS FULL!");
     lcd.setCursor(0,2);
     lcd.print("Please empty it.");
+
+    valid_inserted = 0; // Count of valid inserted bottles will be reset to zero
+    EEPROM.write(10, valid_inserted); // Count of zero will be saved to memory.
+    // The bottle count will remain the same before Arduino board is powered off and after powering on
   }
 
 if (ballpen_count == 0 || full_of_bottles) {
@@ -185,8 +189,8 @@ if (ballpen_count == 0 || full_of_bottles) {
     }
   } 
  }
- lcd.clear();
- resetBottleCount();
+   lcd.clear();
+   resetBottleCount(); // The bottle count saved to memory will be printed on LCD display after the alarm and SMS alert
 }
 
 void invalidWarning() {
